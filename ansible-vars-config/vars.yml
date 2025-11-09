@@ -1,0 +1,4 @@
+# only for cluster controller
+custom_interface: nebula1
+# make sure the same ip range with k3s cluster_cidr
+cluster_cidr: 10.244.0.0/16

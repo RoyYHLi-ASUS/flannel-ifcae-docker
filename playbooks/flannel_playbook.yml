@@ -1,0 +1,149 @@
+---
+- name: Install and Configure Flannel with Custom Interface
+  hosts: localhost
+  connection: local
+  vars:
+    flannel_yml_url: "https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml"
+    flannel_yml_path: "/tmp/kube-flannel.yml"
+    custom_interface: "nebula1"
+    cluster_cidr: "10.244.0.0/16"
+  
+  tasks:
+    - name: Download kube-flannel.yml
+      get_url:
+        url: "{{ flannel_yml_url }}"
+        dest: "{{ flannel_yml_path }}"
+        mode: '0644'
+      register: download_result
+    
+    - name: Display download status
+      debug:
+        msg: "Flannel manifest downloaded to {{ flannel_yml_path }}"
+      when: download_result.changed
+
+    - name: Backup original kube-flannel.yml
+      copy:
+        src: "{{ flannel_yml_path }}"
+        dest: "{{ flannel_yml_path }}.backup"
+        remote_src: yes
+
+    - name: Check current Network configuration
+      shell: grep -A 2 'net-conf.json:' {{ flannel_yml_path }} | grep -oP '"Network":\s*"\K[^"]+'
+      register: current_network
+      failed_when: false
+      changed_when: false
+
+    - name: Display current Network configuration
+      debug:
+        msg: "Current Network: {{ current_network.stdout | default('Not found') }}"
+
+    - name: Modify Network to {{ cluster_cidr }} if different
+      replace:
+        path: "{{ flannel_yml_path }}"
+        regexp: '("Network":\s*")[^"]+(")'
+        replace: '\g<1>{{ cluster_cidr }}\g<2>'
+      when: current_network.stdout != cluster_cidr
+      register: network_modified
+
+    - name: Display Network modification status
+      debug:
+        msg: "✓ Network changed from {{ current_network.stdout }} to {{ cluster_cidr }}"
+      when: network_modified is changed
+
+    - name: Display Network status (no change needed)
+      debug:
+        msg: "✓ Network already set to {{ cluster_cidr }}"
+      when: current_network.stdout == cluster_cidr
+
+    - name: Add --iface argument to flannel args
+      replace:
+        path: "{{ flannel_yml_path }}"
+        regexp: '(^\s+- args:\s*\n(?:\s+- --[^\n]+\n)*\s+- --kube-subnet-mgr\s*)$'
+        replace: '\1\n        - --iface={{ custom_interface }}'
+      register: modify_result
+
+    - name: Verify --iface modification was made
+      shell: grep -A 5 "args:" {{ flannel_yml_path }} | grep "iface"
+      register: verify_iface
+      failed_when: false
+      changed_when: false
+
+    - name: Display --iface verification result
+      debug:
+        msg: "✓ --iface={{ custom_interface }} has been added to flannel configuration"
+      when: verify_iface.rc == 0
+
+    - name: Verify Network configuration after modification
+      shell: grep -A 2 'net-conf.json:' {{ flannel_yml_path }} | grep -oP '"Network":\s*"\K[^"]+'
+      register: verify_network
+      failed_when: false
+      changed_when: false
+
+    - name: Display final Network configuration
+      debug:
+        msg: "✓ Final Network configuration: {{ verify_network.stdout }}"
+      when: verify_network.rc == 0
+
+    - name: Apply modified flannel configuration
+      command: kubectl apply -f {{ flannel_yml_path }}
+      register: apply_result
+
+    - name: Display apply result
+      debug:
+        var: apply_result.stdout_lines
+
+    - name: Wait for flannel to be updated
+      pause:
+        seconds: 5
+        prompt: "Waiting for flannel configuration to be applied..."
+
+    - name: Delete flannel pods to apply new configuration
+      command: kubectl delete pods -n kube-flannel -l app=flannel
+      register: delete_result
+
+    - name: Display pod deletion result
+      debug:
+        var: delete_result.stdout_lines
+
+    - name: Wait for flannel pods to restart
+      shell: kubectl wait --for=condition=Ready pods -n kube-flannel -l app=flannel --timeout=60s
+      register: wait_result
+      retries: 3
+      delay: 10
+      until: wait_result.rc == 0
+      failed_when: false
+
+    - name: Get flannel subnet configuration
+      command: cat /run/flannel/subnet.env
+      register: subnet_env
+      failed_when: false
+      changed_when: false
+
+    - name: Display flannel subnet configuration
+      debug:
+        msg: "{{ subnet_env.stdout_lines }}"
+      when: subnet_env.rc == 0
+
+    - name: Check flannel.1 interface
+      shell: ip link show | grep -i flannel.1
+      register: flannel_interface
+      failed_when: false
+      changed_when: false
+
+    - name: Display flannel interface
+      debug:
+        msg: "{{ flannel_interface.stdout_lines }}"
+      when: flannel_interface.rc == 0
+
+    - name: Summary
+      debug:
+        msg:
+          - "=== Flannel Installation Summary ==="
+          - "✓ Downloaded: {{ flannel_yml_url }}"
+          - "✓ Network: {{ cluster_cidr }}"
+          - "✓ Interface: --iface={{ custom_interface }}"
+          - "✓ Applied: kubectl apply completed"
+          - "✓ Restarted: Flannel pods deleted and recreated"
+          - ""
+          - "Subnet configuration: /run/flannel/subnet.env"
+          - "Interface status: flannel.1"

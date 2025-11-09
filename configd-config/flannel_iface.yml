@@ -1,0 +1,7 @@
+apiVersion: configd/v1
+kind: TaskList
+metadata:
+  name: flannel-setup
+
+cmd: >-
+  ansible-playbook flannel_playbook.yml -e "@ansible-vars-config/vars.yml"

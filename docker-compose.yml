@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  flannel-installer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: flannel-ansible-installer
+    privileged: true
+    network_mode: host
+    pid: host
+    #environment:
+      # Flannel 自訂網路介面（預設 nebula1）
+      # 可改為: eth0, wg0, ens33 等
+      #- CUSTOM_INTERFACE=nebula1
+      
+      # Cluster CIDR（必須與 K3s 配置一致）
+      #- CLUSTER_CIDR=10.244.0.0/16
+      
+    volumes:
+      # 掛載整個 host 文件系統
+      - /:/host
+      
+      # 掛載 systemd（必要）
+      - /run/systemd:/run/systemd
+      - /var/run/dbus:/var/run/dbus
+      - ./ansible-vars-config:/ansible-vars-config:ro
+      
+      # 如果需要使用 host 的 kubeconfig（可選）
+      # - /etc/rancher/k3s/k3s.yaml:/root/.kube/config:ro
+      
+    restart: "no"
+    
