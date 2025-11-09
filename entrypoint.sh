@@ -18,7 +18,7 @@ echo ""
 # 複製 playbook 到 host 的 /tmp
 echo "複製 playbook 到 host /tmp..."
 cp /ansible/flannel_playbook.yml /host/tmp/flannel_playbook.yml
-cp /ansible-vars-config/vars.yml /host/tmp/vars.yml
+cp /ansible/vars.yml /host/tmp/vars.yml
 
 if [ ! -f "/host/tmp/flannel_playbook.yml" ]; then
     echo "❌ 錯誤: 複製失敗"
@@ -35,17 +35,24 @@ echo ""
 nsenter --target 1 --mount --uts --ipc --net --pid -- bash -c "
     set -e
     
-    # 檢查 Ansible 是否安裝
+    # 確保在 host 上安裝 ansible（如果需要）
     if ! command -v ansible-playbook &> /dev/null; then
-        echo '❌ 錯誤: host 上未安裝 Ansible'
-        echo ''
-        echo '請先在 host 上安裝 Ansible:'
-        echo '  Ubuntu/Debian: sudo apt-get install -y ansible'
-        echo '  CentOS/RHEL:   sudo yum install -y ansible'
-        echo '  Rocky/Alma:    sudo dnf install -y ansible'
-        exit 1
+        echo '正在 host 上安裝 Ansible...'
+        # 根據不同發行版安裝 ansible
+        if command -v apt-get &> /dev/null; then
+            apt-get update && apt-get install -y ansible
+        elif command -v yum &> /dev/null; then
+            yum install -y epel-release && yum install -y ansible
+        elif command -v dnf &> /dev/null; then
+            dnf install -y ansible
+        elif command -v apk &> /dev/null; then
+            apk add ansible
+        else
+            echo '錯誤: 無法自動安裝 Ansible'
+            exit 1
+        fi
     fi
-    
+
     echo '✅ Ansible 已安裝'
     ansible --version | head -n 1
     echo ''

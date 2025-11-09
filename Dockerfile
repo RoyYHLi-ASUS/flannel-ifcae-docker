@@ -16,6 +16,7 @@ WORKDIR /ansible
 
 # 複製 flannel playbook
 COPY playbooks/flannel_playbook.yml /ansible/flannel_playbook.yml
+COPY ansible-vars-config/vars.yml /ansible/vars.yml
 
 # 設置 Ansible 配置
 RUN mkdir -p /etc/ansible && \
