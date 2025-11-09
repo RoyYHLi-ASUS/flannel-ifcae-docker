@@ -11,6 +11,6 @@ docker run --rm \
   -v /run/systemd:/run/systemd \
   -v /var/run/dbus:/var/run/dbus \
   -v ./ansible-vars-config:/ansible-vars-config:ro \
-  flannel-ansible
+  flannel-ansible:latest
 
 docker compose run --rm flannel-installer
